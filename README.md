@@ -19,11 +19,7 @@ The navigate into your install folder using *cd* and run the installation code. 
 
 Note: This install script will install PyRosetta, which requires a license for commercial purposes. The code requires about 2 Mb of storage space, while the AlphaFold2 weights take up about 5.3 Gb.
 
-`srun --pty -n 1 -c 8 --time=01:00:00 --mem=32G --gpus=1 bash -l`
-
-`module load mamba`
-
-`mamba env create -f BindCraft.yml --prefix /shares/seeger.imm.uzh/BindCraft-env`
+`srun -p gpu --gres=gpu:1 --time=02:00:00 --pty bash`
 
 `bash install_bindcraft.sh`
 
