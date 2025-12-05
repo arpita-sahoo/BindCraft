@@ -13,7 +13,7 @@ Simple binder design pipeline using AlphaFold2 backpropagation, MPNN, and PyRose
 ## Installation
 First you need to clone this repository. Replace **[install_folder]** with the path where you want to install it.
 
-`git clone https://github.com/fabianackle/BindCraft`
+`git clone https://github.com/arpita-sahoo/BindCraft.git`
 
 The navigate into your install folder using *cd* and run the installation code. BindCraft requires a CUDA-compatible Nvidia graphics card to run. In the *cuda* setting, please specify the CUDA version compatible with your graphics card, for example '11.8'. If unsure, leave blank but it's possible that the installation might select the wrong version, which will lead to errors. In *pkg_manager* specify whether you are using 'mamba' or 'conda', if left blank it will use 'conda' by default. 
 
