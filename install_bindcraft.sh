@@ -1,69 +1,93 @@
 #!/bin/bash
-################## BindCraft installation script
+#########################################
+# BindCraft Full Environment Rebuild
+#########################################
 
-# Activating bindcraft environment
-module load miniforge3
-eval "$(conda shell.bash hook)"
-conda activate /shares/seeger.imm.uzh/BindCraft-env
+set -e  # Exit immediately on error
 
-
-############################################################################################################
-############################################################################################################
-################## initialisation
 SECONDS=0
 
-# set paths needed for installation and check for conda installation
-install_dir=$(pwd)
+#########################################
+# Load Conda
+#########################################
+module load miniforge3
+source $(conda info --base)/etc/profile.d/conda.sh
 
-# make sure all required packages were installed
-required_packages=(pip pandas libgfortran5 matplotlib numpy biopython scipy pdbfixer seaborn tqdm jupyter ffmpeg pyrosetta fsspec py3dmol chex dm-haiku dm-tree joblib ml-collections immutabledict optax jaxlib jax cuda-nvcc cudnn)
-missing_packages=()
+ENV_PATH="/home/$USER/bindcraft-env"
 
-# Check each package
-for pkg in "${required_packages[@]}"; do
-    conda list "$pkg" | grep -w "$pkg" >/dev/null 2>&1 || missing_packages+=("$pkg")
-done
+echo ">>> Creating / activating conda environment at: $ENV_PATH"
+if [ ! -d "$ENV_PATH" ]; then
+    conda create -y -p "$ENV_PATH" python=3.10
+fi
+conda activate "$ENV_PATH"
 
-# If any packages are missing, output error and exit
-if [ ${#missing_packages[@]} -ne 0 ]; then
-    echo -e "Error: The following packages are missing from the environment:"
-    for pkg in "${missing_packages[@]}"; do
-        echo -e " - $pkg"
-    done
-    exit 1
+#########################################
+# Install required Python dependencies
+# NOTE: This MUST be run on a GPU compute node !
+#########################################
+echo ">>> Installing Python dependencies (GPU-compatible JAX)"
+
+# Update pip
+pip install --upgrade pip
+
+pip install --no-cache-dir \
+    numpy pandas scipy matplotlib seaborn \
+    biopython tqdm joblib \
+    chex dm-haiku dm-tree optax immutabledict ml-collections \
+    py3dmol fsspec
+
+#########################################
+# Install GPU-JAX
+#########################################
+echo ">>> Installing CUDA-enabled JAX"
+pip install --no-cache-dir "jax[cuda]" jaxlib
+
+#########################################
+# Install ColabDesign from GitHub
+#########################################
+echo ">>> Installing ColabDesign"
+pip install --no-cache-dir --no-deps git+https://github.com/sokrypton/ColabDesign.git
+
+python - << EOF
+import jax, colabdesign
+print("✔ Python packages OK")
+print("Detected devices:", jax.devices())
+EOF
+
+#########################################
+# Download AlphaFold2 weights
+#########################################
+echo ">>> Downloading AlphaFold2 weights"
+INSTALL_DIR=$(pwd)
+PARAMS_DIR="${INSTALL_DIR}/params"
+PARAMS_FILE="${PARAMS_DIR}/alphafold_params_2022-12-06.tar"
+
+mkdir -p "${PARAMS_DIR}"
+
+if [ ! -f "${PARAMS_DIR}/params_model_5_ptm.npz" ]; then
+    wget -O "${PARAMS_FILE}" "https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar"
+    tar -xvf "${PARAMS_FILE}" -C "${PARAMS_DIR}"
+    rm "${PARAMS_FILE}"
+else
+    echo ">>> Weights already extracted — skipping download."
 fi
 
-# install ColabDesign
-echo -e "Installing ColabDesign\n"
-pip3 install git+https://github.com/sokrypton/ColabDesign.git --no-deps || { echo -e "Error: Failed to install ColabDesign"; exit 1; }
-python -c "import colabdesign" >/dev/null 2>&1 || { echo -e "Error: colabdesign module not found after installation"; exit 1; }
+#########################################
+# Fix executable permissions
+#########################################
+echo ">>> Setting permissions for DSSP + DAlphaBall"
+chmod +x "${INSTALL_DIR}/functions/dssp" || echo "Warning: dssp not found"
+chmod +x "${INSTALL_DIR}/functions/DAlphaBall.gcc" || echo "Warning: DAlphaBall.gcc not found"
 
-# AlphaFold2 weights
-echo -e "Downloading AlphaFold2 model weights \n"
-params_dir="${install_dir}/params"
-params_file="${params_dir}/alphafold_params_2022-12-06.tar"
-
-# download AF2 weights
-mkdir -p "${params_dir}" || { echo -e "Error: Failed to create weights directory"; exit 1; }
-wget -O "${params_file}" "https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar" || { echo -e "Error: Failed to download AlphaFold2 weights"; exit 1; }
-[ -s "${params_file}" ] || { echo -e "Error: Could not locate downloaded AlphaFold2 weights"; exit 1; }
-
-# extract AF2 weights
-tar tf "${params_file}" >/dev/null 2>&1 || { echo -e "Error: Corrupt AlphaFold2 weights download"; exit 1; }
-tar -xvf "${params_file}" -C "${params_dir}" || { echo -e "Error: Failed to extract AlphaFold2weights"; exit 1; }
-[ -f "${params_dir}/params_model_5_ptm.npz" ] || { echo -e "Error: Could not locate extracted AlphaFold2 weights"; exit 1; }
-rm "${params_file}" || { echo -e "Warning: Failed to remove AlphaFold2 weights archive"; }
-
-# chmod executables
-echo -e "Changing permissions for executables\n"
-chmod +x "${install_dir}/functions/dssp" || { echo -e "Error: Failed to chmod dssp"; exit 1; }
-chmod +x "${install_dir}/functions/DAlphaBall.gcc" || { echo -e "Error: Failed to chmod DAlphaBall.gcc"; exit 1; }
-
-# finish
+#########################################
+# Done
+#########################################
 conda deactivate
-echo -e "BindCraft environment set up\n"
 
-################## finish script
-t=$SECONDS 
-echo -e "Successfully finished BindCraft installation!\n"
-echo -e "Installation took $(($t / 3600)) hours, $((($t / 60) % 60)) minutes and $(($t % 60)) seconds."
+t=$SECONDS
+echo -e "\n✔ BindCraft installation COMPLETE"
+echo -e "Time: $(($t / 3600))h $((($t / 60) % 60))m $(($t % 60))s"
+echo -e "\nActivate your environment using:"
+echo -e "  module load miniforge3"
+echo -e "  source \$(conda info --base)/etc/profile.d/conda.sh"
+echo -e "  conda activate $ENV_PATH\n"
