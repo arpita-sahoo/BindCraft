@@ -11,7 +11,7 @@
 ##SBATCH --mail-type=BEGIN,END 
 
 # Initialise environment and modules
-module load mamba
+module load miniforge3
 eval "$(conda shell.bash hook)"
 conda activate /shares/seeger.imm.uzh/BindCraft-env
 CONDA_BASE=$(conda info --base)
